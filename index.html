@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Trading Simulator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: radial-gradient(circle at top, #0a0a0f, #000);
+  color: #fff;
+}
+
+.container {
+  padding: 15px;
+}
+
+.panel {
+  background: rgba(255,255,255,0.05);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  padding: 15px;
+  margin-bottom: 15px;
+}
+
+h2 { margin: 0 0 10px; }
+
+.price {
+  font-size: 28px;
+  font-weight: bold;
+}
+
+.green { color: #00ff9d; }
+.red { color: #ff4d4d; }
+
+button {
+  padding: 10px 15px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  margin: 5px;
+  font-weight: bold;
+}
+
+.buy { background: #00c853; }
+.sell { background: #d50000; }
+
+input {
+  width: 80px;
+  margin: 5px;
+}
+
+canvas {
+  width: 100%;
+  height: 200px;
+  background: #111;
+  border-radius: 10px;
+}
+
+.trade-history {
+  max-height: 150px;
+  overflow-y: auto;
+  font-size: 14px;
+}
+
+@media (min-width: 768px) {
+  .grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 15px;
+  }
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<div class="panel">
+  <h2>Market (NAS100 Demo)</h2>
+  <div id="price" class="price">15000.00</div>
+</div>
+
+<div class="grid">
+
+<div class="panel">
+  <canvas id="chart"></canvas>
+</div>
+
+<div class="panel">
+  <h2>Trade</h2>
+  Lot: <input id="lot" type="number" value="1"><br>
+  SL: <input id="sl" type="number" placeholder="Stop Loss"><br>
+  TP: <input id="tp" type="number" placeholder="Take Profit"><br>
+
+  <button class="buy" onclick="openTrade('buy')">BUY</button>
+  <button class="sell" onclick="openTrade('sell')">SELL</button>
+
+  <h3>Balance: $<span id="balance">10000</span></h3>
+  <h3>PnL: <span id="pnl">0</span></h3>
+</div>
+
+</div>
+
+<div class="panel">
+  <h2>Trade History</h2>
+  <div id="history" class="trade-history"></div>
+</div>
+
+</div>
+
+<script>
+let price = 15000;
+let prices = [];
+let balance = 10000;
+let pnl = 0;
+let positions = [];
+
+const priceEl = document.getElementById("price");
+const balanceEl = document.getElementById("balance");
+const pnlEl = document.getElementById("pnl");
+const historyEl = document.getElementById("history");
+
+const canvas = document.getElementById("chart");
+const ctx = canvas.getContext("2d");
+
+canvas.width = canvas.offsetWidth;
+canvas.height = canvas.offsetHeight;
+
+function simulatePrice() {
+  let change = (Math.random() - 0.5) * 20;
+  price += change;
+
+  prices.push(price);
+  if (prices.length > 100) prices.shift();
+
+  updatePositions();
+  drawChart();
+  updateUI();
+}
+
+function updateUI() {
+  priceEl.textContent = price.toFixed(2);
+  balanceEl.textContent = balance.toFixed(2);
+
+  pnlEl.textContent = pnl.toFixed(2);
+  pnlEl.className = pnl >= 0 ? "green" : "red";
+}
+
+function drawChart() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  ctx.beginPath();
+  ctx.strokeStyle = "#00ffcc";
+  ctx.lineWidth = 2;
+
+  prices.forEach((p, i) => {
+    let x = i * (canvas.width / prices.length);
+    let y = canvas.height - (p - Math.min(...prices)) / (Math.max(...prices)-Math.min(...prices)+1) * canvas.height;
+
+    if (i === 0) ctx.moveTo(x,y);
+    else ctx.lineTo(x,y);
+  });
+
+  ctx.stroke();
+}
+
+function openTrade(type) {
+  let lot = parseFloat(document.getElementById("lot").value) || 1;
+  let sl = parseFloat(document.getElementById("sl").value);
+  let tp = parseFloat(document.getElementById("tp").value);
+
+  positions.push({
+    type,
+    entry: price,
+    lot,
+    sl,
+    tp
+  });
+
+  beep();
+}
+
+function updatePositions() {
+  pnl = 0;
+
+  positions = positions.filter(pos => {
+    let profit = (price - pos.entry) * pos.lot * (pos.type === "buy" ? 1 : -1);
+
+    if ((pos.tp && ((pos.type==="buy" && price>=pos.tp) || (pos.type==="sell" && price<=pos.tp))) ||
+        (pos.sl && ((pos.type==="buy" && price<=pos.sl) || (pos.type==="sell" && price>=pos.sl)))) {
+
+      balance += profit;
+      addHistory(pos.type, profit);
+      return false;
+    }
+
+    pnl += profit;
+    return true;
+  });
+}
+
+function addHistory(type, profit) {
+  let div = document.createElement("div");
+  div.textContent = `${type.toUpperCase()} | PnL: ${profit.toFixed(2)}`;
+  div.className = profit >= 0 ? "green" : "red";
+  historyEl.prepend(div);
+}
+
+function beep() {
+  let ctx = new AudioContext();
+  let osc = ctx.createOscillator();
+  osc.type = "sine";
+  osc.connect(ctx.destination);
+  osc.start();
+  setTimeout(()=>osc.stop(),100);
+}
+
+// keyboard shortcuts
+document.addEventListener("keydown", e => {
+  if (e.key.toLowerCase() === "b") openTrade("buy");
+  if (e.key.toLowerCase() === "s") openTrade("sell");
+});
+
+setInterval(simulatePrice, 1000);
+</script>
+
+</body>
+  </html>
